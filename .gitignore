@@ -1,0 +1,12 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
+# Local secrets / env files - never commit these
+*.env
+.env.*

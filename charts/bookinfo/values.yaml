@@ -3,6 +3,9 @@ productpage:
   tag: "1.20.0"
   port: 9080
   replicas: 1
+  secret:
+    enabled: true
+    remoteKey: bookinfo/productpage
 
 details:
   image: docker.io/istio/examples-bookinfo-details-v1

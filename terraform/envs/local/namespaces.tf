@@ -12,3 +12,15 @@ resource "kubernetes_namespace" "bookinfo" {
     }
   }
 }
+
+resource "kubernetes_namespace" "vault" {
+  metadata {
+    name = "vault"
+  }
+}
+
+resource "kubernetes_namespace" "external_secrets" {
+  metadata {
+    name = "external-secrets"
+  }
+}

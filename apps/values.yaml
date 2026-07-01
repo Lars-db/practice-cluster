@@ -1,7 +1,18 @@
-repoURL: https://github.com/<your-user>/practice-cluster.git
+repoURL: https://github.com/Lars-db/practice-cluster.git
 targetRevision: HEAD
 
 apps:
   bookinfo:
     enabled: true
     namespace: bookinfo
+  vault:
+    enabled: true
+    namespace: vault
+    chartVersion: "0.33.0"
+  externalSecrets:
+    enabled: true
+    namespace: external-secrets
+    chartVersion: "2.7.0"
+  secretsConfig:
+    enabled: true
+    namespace: external-secrets

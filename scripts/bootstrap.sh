@@ -27,3 +27,13 @@ echo "Default admin password:"
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d
 echo ""
+echo "=================================================================="
+echo " Next: bootstrap secrets management (Vault + External Secrets)"
+echo "=================================================================="
+echo "1. Wait for the 'vault' Application to sync (kubectl -n argocd get application vault)"
+echo "2. Run ./scripts/vault-init.sh to initialize and unseal Vault"
+echo "3. export TF_VAR_vault_token=<root token from step 2>"
+echo "4. cd terraform/vault-config && terraform init && terraform apply"
+echo "5. Write a demo secret: vault kv put secret/bookinfo/productpage password=demo123"
+echo "   (see docs/secrets-management.md for the full workflow)"
+echo ""

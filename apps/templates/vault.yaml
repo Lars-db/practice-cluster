@@ -1,0 +1,44 @@
+{{- if .Values.apps.vault.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: {{ .Values.apps.vault.chartVersion | quote }}
+    helm:
+      values: |
+        server:
+          ha:
+            enabled: true
+            raft:
+              enabled: true
+              setNodeId: false
+          dataStorage:
+            enabled: true
+            size: 2Gi
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        ui:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.apps.vault.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

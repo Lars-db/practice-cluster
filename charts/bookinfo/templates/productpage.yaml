@@ -18,6 +18,14 @@ spec:
           image: "{{ .Values.productpage.image }}:{{ .Values.productpage.tag }}"
           ports:
             - containerPort: {{ .Values.productpage.port }}
+          {{- if .Values.productpage.secret.enabled }}
+          env:
+            - name: DEMO_SECRET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: productpage-secret
+                  key: password
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

@@ -4,6 +4,8 @@ A locally hosted Kubernetes cluster built as a hands-on learning environment and
 
 The cluster ships with the [Istio Bookinfo](https://istio.io/latest/docs/examples/bookinfo/) sample application: a small polyglot microservices app (Python, Ruby, Java, Node.js) that is a practical target for practicing service mesh configuration, traffic management, and observability.
 
+Secrets are never stored in plaintext in Git. **HashiCorp Vault** + **External Secrets Operator** provide repo-wide secrets management — see [`docs/secrets-management.md`](docs/secrets-management.md) for the architecture and the workflow for adding new secrets to any app.
+
 ---
 
 ## Table of Contents
@@ -15,6 +17,7 @@ The cluster ships with the [Istio Bookinfo](https://istio.io/latest/docs/example
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
 - [Accessing the Applications](#accessing-the-applications)
+- [Secrets Management](#secrets-management)
 - [Adding a New Application](#adding-a-new-application)
 - [Tearing Down](#tearing-down)
 
@@ -35,14 +38,15 @@ The cluster ships with the [Istio Bookinfo](https://istio.io/latest/docs/example
 │  │   └──────┬───────┘        └──────────┬───────────┘   │  │
 │  │          │ deploys                   │ declares       │  │
 │  │          ▼                           ▼                │  │
-│  │   ┌─────────────────────────────────────────────┐    │  │
-│  │   │              bookinfo namespace              │    │  │
-│  │   │                                              │    │  │
-│  │   │  productpage ──▶ details                    │    │  │
-│  │   │       │                                      │    │  │
-│  │   │       └────────▶ reviews ──▶ ratings         │    │  │
-│  │   │                                              │    │  │
-│  │   └─────────────────────────────────────────────┘    │  │
+│  │   ┌───────────────┐  ┌──────────────┐  ┌───────────┐ │  │
+│  │   │ Vault          │◀─│ External      │  │ bookinfo   │ │  │
+│  │   │ (vault ns)     │  │ Secrets       │  │ namespace  │ │  │
+│  │   │ KV v2 secrets  │─▶│ Operator      │─▶│            │ │  │
+│  │   └───────────────┘  │ (eso ns)      │  │ productpage│ │  │
+│  │                       └──────────────┘  │  ├─▶details │ │  │
+│  │                                          │  └─▶reviews │ │  │
+│  │                                          │      └▶ratings│ │
+│  │                                          └───────────┘ │  │
 │  │                                                      │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                             │
@@ -68,6 +72,8 @@ The cluster ships with the [Istio Bookinfo](https://istio.io/latest/docs/example
 | **Terraform** | Provisions namespaces and configures Kubernetes/Helm providers |
 | **Helm** | Packages applications as reusable, configurable charts |
 | **ArgoCD** | GitOps operator — continuously syncs cluster state to this repo |
+| **HashiCorp Vault** | Secret store — single source of truth for sensitive values, never Git |
+| **External Secrets Operator** | Syncs Vault secrets into native Kubernetes `Secret` objects at sync time |
 | **Bookinfo** | Demo microservices app (Istio sample) for practice |
 
 ---
@@ -79,12 +85,16 @@ practice-cluster/
 │
 ├── terraform/
 │   ├── modules/                  # Reusable Terraform modules (extend as needed)
-│   └── envs/
-│       └── local/
-│           ├── main.tf           # Kubernetes + Helm provider configuration
-│           ├── namespaces.tf     # Creates argocd and bookinfo namespaces
-│           ├── variables.tf      # Input variables (e.g. kubeconfig context)
-│           └── outputs.tf        # Output values
+│   ├── envs/
+│   │   └── local/
+│   │       ├── main.tf           # Kubernetes + Helm provider configuration
+│   │       ├── namespaces.tf     # Creates argocd, bookinfo, vault, external-secrets namespaces
+│   │       ├── variables.tf      # Input variables (e.g. kubeconfig context)
+│   │       └── outputs.tf        # Output values
+│   └── vault-config/             # Configures Vault (auth/KV/policy) - applied separately, after Vault is unsealed
+│       ├── main.tf               # Vault + Kubernetes provider configuration
+│       ├── variables.tf          # vault_addr, vault_token (via TF_VAR_vault_token)
+│       └── vault.tf              # Kubernetes auth method, KV v2 mount, ESO policy/role
 │
 ├── bootstrap/
 │   └── argocd/
@@ -95,28 +105,41 @@ practice-cluster/
 │   ├── Chart.yaml
 │   ├── values.yaml               # Toggle applications on/off, set namespaces
 │   └── templates/
-│       └── bookinfo.yaml         # ArgoCD Application manifest for bookinfo
+│       ├── bookinfo.yaml         # ArgoCD Application manifest for bookinfo
+│       ├── vault.yaml            # ArgoCD Application for Vault (remote Helm chart source)
+│       ├── external-secrets.yaml # ArgoCD Application for External Secrets Operator
+│       └── secrets-config.yaml   # ArgoCD Application for the secrets-config chart
 │
 ├── charts/                       # Helm charts for each application
-│   └── bookinfo/
+│   ├── bookinfo/
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml           # Image tags, replica counts, service ports
+│   │   └── templates/
+│   │       ├── productpage.yaml  # Frontend service (Python)
+│   │       ├── details.yaml      # Book details service (Ruby)
+│   │       ├── reviews.yaml      # Review aggregator service (Java)
+│   │       ├── ratings.yaml      # Star ratings service (Node.js)
+│   │       └── external-secret.yaml  # Syncs a demo Vault secret into productpage
+│   └── secrets-config/
 │       ├── Chart.yaml
-│       ├── values.yaml           # Image tags, replica counts, service ports
+│       ├── values.yaml
 │       └── templates/
-│           ├── productpage.yaml  # Frontend service (Python)
-│           ├── details.yaml      # Book details service (Ruby)
-│           ├── reviews.yaml      # Review aggregator service (Java)
-│           └── ratings.yaml      # Star ratings service (Node.js)
+│           └── cluster-secret-store.yaml  # ClusterSecretStore wiring ESO to Vault
 │
 ├── cluster/
 │   └── namespaces/               # Raw namespace manifests (reference / fallback)
 │       ├── argocd.yaml
-│       └── bookinfo.yaml
+│       ├── bookinfo.yaml
+│       ├── vault.yaml
+│       └── external-secrets.yaml
 │
 ├── scripts/
 │   ├── bootstrap.sh              # Installs ArgoCD and applies the root app
+│   ├── vault-init.sh             # One-time Vault initialize + unseal helper
 │   └── teardown.sh               # Removes all apps and ArgoCD from the cluster
 │
-└── docs/                         # Additional documentation (architecture decisions, runbooks)
+└── docs/
+    └── secrets-management.md     # Vault + ESO architecture and secret-adding workflow
 ```
 
 ---
@@ -131,7 +154,7 @@ This cluster is built around the **App of Apps** GitOps pattern:
 
 3. The **root Application** (`bootstrap/argocd/root-app.yaml`) is applied once manually. It points ArgoCD at the `apps/` directory in this repo.
 
-4. ArgoCD renders the **`apps/` Helm chart**, which produces one ArgoCD `Application` resource per entry in `apps/values.yaml` (currently: `bookinfo`).
+4. ArgoCD renders the **`apps/` Helm chart**, which produces one ArgoCD `Application` resource per entry in `apps/values.yaml` (currently: `vault`, `external-secrets`, `secrets-config`, `bookinfo`). `argocd.argoproj.io/sync-wave` annotations make sure Vault and ESO come up before `secrets-config` (which needs ESO's CRDs), which comes up before `bookinfo` (which references the `ClusterSecretStore` `secrets-config` declares). See [Secrets Management](#secrets-management).
 
 5. Each child Application points ArgoCD at a chart in `charts/`. ArgoCD deploys and continuously reconciles it.
 
@@ -165,22 +188,11 @@ Git push
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/<your-user>/practice-cluster.git
+git clone https://github.com/Lars-db/practice-cluster.git
 cd practice-cluster
 ```
 
-Update the repo URL in `bootstrap/argocd/root-app.yaml`:
-
-```yaml
-source:
-  repoURL: https://github.com/<your-user>/practice-cluster.git  # <-- set this
-```
-
-Also update `apps/values.yaml`:
-
-```yaml
-repoURL: https://github.com/<your-user>/practice-cluster.git  # <-- set this
-```
+> Forking this repo? Update the repo URL in both `bootstrap/argocd/root-app.yaml` (`spec.source.repoURL`) and `apps/values.yaml` (`repoURL`) to point at your own fork before bootstrapping.
 
 ### 2. Provision namespaces with Terraform
 
@@ -205,7 +217,23 @@ This script:
 - Waits for the deployment to be ready
 - Applies the root App of Apps
 
-ArgoCD will then automatically deploy bookinfo within a minute or two.
+ArgoCD will then automatically deploy Vault, External Secrets Operator, `secrets-config`, and bookinfo within a few minutes.
+
+### 4. Bootstrap secrets management
+
+Vault comes up sealed and unconfigured - this is a manual, one-time step
+(see [Secrets Management](#secrets-management) for why):
+
+```bash
+./scripts/vault-init.sh
+export TF_VAR_vault_token=<root token printed above>
+cd terraform/vault-config && terraform init && terraform apply && cd ../..
+kubectl -n vault exec vault-0 -- vault kv put secret/bookinfo/productpage password=demo123
+```
+
+Until this is done, `bookinfo`'s `productpage` pod will not become `Ready` -
+it depends on a secret synced from Vault. Full details and the workflow for
+adding new secrets are in [`docs/secrets-management.md`](docs/secrets-management.md).
 
 ---
 
@@ -238,6 +266,27 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 > # then visit http://localhost:8080
 > ```
 
+### Vault UI
+
+Vault's chart doesn't expose a NodePort by default - use `kubectl port-forward`:
+
+```bash
+kubectl port-forward svc/vault -n vault 8200:8200
+# then visit http://localhost:8200 and log in with the root token
+```
+
+---
+
+## Secrets Management
+
+Secrets are never committed to Git in plaintext. **HashiCorp Vault** is the
+single source of truth for sensitive values; **External Secrets Operator**
+syncs them into real Kubernetes `Secret` objects that apps consume normally.
+
+See [`docs/secrets-management.md`](docs/secrets-management.md) for the full
+architecture, the one-time bootstrap steps, and the step-by-step workflow for
+adding a new secret to any app.
+
 ---
 
 ## Adding a New Application
@@ -254,7 +303,11 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
        enabled: true
        namespace: my-new-app
    ```
-4. Commit and push to `main` — ArgoCD handles the rest.
+4. If the app needs a secret, follow the workflow in
+   [`docs/secrets-management.md`](docs/secrets-management.md) — write the
+   value to Vault, add an `ExternalSecret` manifest, consume the resulting
+   `Secret` in your Deployment. Never commit a plaintext value.
+5. Commit and push to `main` — ArgoCD handles the rest.
 
 ---
 
@@ -264,7 +317,7 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 ./scripts/teardown.sh
 ```
 
-This removes the root Application, uninstalls ArgoCD, and deletes the `argocd` and `bookinfo` namespaces.
+This removes the root Application, uninstalls ArgoCD, and deletes the `argocd`, `bookinfo`, `vault`, and `external-secrets` namespaces (which also destroys Vault's data - there's nothing to preserve in a learning cluster, but note this before reusing it for anything real).
 
 To also destroy the Terraform-managed resources:
 
@@ -272,3 +325,7 @@ To also destroy the Terraform-managed resources:
 cd terraform/envs/local
 terraform destroy
 ```
+
+If you ran `terraform apply` in `terraform/vault-config`, that state now
+refers to a Vault that no longer exists — see the note printed by
+`teardown.sh`.

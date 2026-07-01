@@ -10,7 +10,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/<your-user>/practice-cluster.git
+    repoURL: https://github.com/Lars-db/practice-cluster.git
     targetRevision: HEAD
     path: apps
     helm:

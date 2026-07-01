@@ -1,0 +1,5 @@
+apiVersion: v2
+name: secrets-config
+description: Cluster-wide External Secrets Operator wiring to Vault
+type: application
+version: 0.1.0
