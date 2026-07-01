@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.reviews.replicas }}
+  selector:
+    matchLabels:
+      app: reviews
+  template:
+    metadata:
+      labels:
+        app: reviews
+    spec:
+      containers:
+        - name: reviews
+          image: "{{ .Values.reviews.image }}:{{ .Values.reviews.tag }}"
+          ports:
+            - containerPort: {{ .Values.reviews.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: reviews
+  ports:
+    - port: 9080
+      targetPort: {{ .Values.reviews.port }}

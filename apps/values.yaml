@@ -1,0 +1,7 @@
+repoURL: https://github.com/<your-user>/practice-cluster.git
+targetRevision: HEAD
+
+apps:
+  bookinfo:
+    enabled: true
+    namespace: bookinfo

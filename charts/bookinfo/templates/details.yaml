@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: details
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.details.replicas }}
+  selector:
+    matchLabels:
+      app: details
+  template:
+    metadata:
+      labels:
+        app: details
+    spec:
+      containers:
+        - name: details
+          image: "{{ .Values.details.image }}:{{ .Values.details.tag }}"
+          ports:
+            - containerPort: {{ .Values.details.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: details
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: details
+  ports:
+    - port: 9080
+      targetPort: {{ .Values.details.port }}

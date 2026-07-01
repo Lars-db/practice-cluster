@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ratings
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.ratings.replicas }}
+  selector:
+    matchLabels:
+      app: ratings
+  template:
+    metadata:
+      labels:
+        app: ratings
+    spec:
+      containers:
+        - name: ratings
+          image: "{{ .Values.ratings.image }}:{{ .Values.ratings.tag }}"
+          ports:
+            - containerPort: {{ .Values.ratings.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ratings
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: ratings
+  ports:
+    - port: 9080
+      targetPort: {{ .Values.ratings.port }}
